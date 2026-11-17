@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import time
 import logging
+import os
 
 from app.routers import market, portfolio, chat
 from app.routers import backtest_router
@@ -9,13 +10,20 @@ from app.routers import chart_router
 
 app = FastAPI(title="DalalStreet AI API", version="2.0")
 
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    allow_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+else:
+    allow_origins = [
+        "http://localhost:3000",
+        "https://dalalstreet-y333.onrender.com",
+        "https://dalal-street-ai-pmpn.vercel.app",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://dalal-street-ai-pmpn.vercel.app",
-        "https://*.vercel.app",
-    ],
+    allow_origins=allow_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
