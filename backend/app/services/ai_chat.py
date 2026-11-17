@@ -6,7 +6,7 @@ from app.services.trade_engine import get_holdings, get_cash, get_orders
 from app.services.data_fetcher import get_live_price
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-MODEL = "llama-3.3-70b-versatile"
+MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 SYSTEM_PROMPT = """You are DalalStreet AI — an expert Indian stock market assistant
 built for NSE and BSE traders.
