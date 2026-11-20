@@ -1,7 +1,7 @@
 import asyncio, json
 from fastapi import APIRouter
 from sse_starlette.sse import EventSourceResponse
-from app.services.data_fetcher import get_live_price, get_index, fetch_indices_parallel, warm_cache, DEFAULT_WATCHLIST
+from app.services.data_fetcher import get_live_price, get_index, fetch_indices_parallel, warm_cache
 
 router = APIRouter()
 

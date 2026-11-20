@@ -7,6 +7,8 @@ import os
 from app.routers import market, portfolio, chat
 from app.routers import backtest_router
 from app.routers import chart_router
+from app.services.data_fetcher import warm_cache
+from app.routers.market import DEFAULT_WATCHLIST, INDICES
 
 app = FastAPI(title="DalalStreet AI API", version="2.0")
 
@@ -38,6 +40,13 @@ async def add_process_time_header(request: Request, call_next):
     if process_time_ms > 500:
         logging.warning(f"Slow endpoint: {request.method} {request.url.path} took {process_time_ms}ms")
     return response
+
+@app.on_event("startup")
+async def _warm_cache_on_startup():
+    try:
+        warm_cache(DEFAULT_WATCHLIST, INDICES)
+    except Exception:
+        pass
 
 app.include_router(market.router,          prefix="/api/market",    tags=["Market"])
 app.include_router(portfolio.router,       prefix="/api/portfolio", tags=["Portfolio"])
