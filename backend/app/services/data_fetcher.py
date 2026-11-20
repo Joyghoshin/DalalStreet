@@ -1,9 +1,15 @@
 import yfinance as yf
-import random, math, time
+import random, math, time, threading
 from datetime import datetime, timezone, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional
 
 _cache: dict = {}
 _last_gbm: dict = {}
+_refresh_locks: dict = {}
+_refresh_in_progress: set = set()
+_rate_limit_cooldown_until: float = 0.0
+_rate_limit_lock = threading.Lock()
 
 CACHE_TTL_OPEN   = 60    # 1 min during market hours
 CACHE_TTL_CLOSED = 1800  # 30 min when closed — drastically reduces requests
@@ -142,6 +148,7 @@ def _gbm(symbol: str, exchange: str) -> dict:
         "change": chg,
         "changePct": round((chg / base) * 100, 2) if base else 0,
         "timestamp": datetime.now().isoformat(),
+        "source": "simulated",
     }
 
 
@@ -191,13 +198,131 @@ def _resolve_ticker(symbol: str, exchange: str) -> str:
     )
 
 
+def _get_ttl() -> int:
+    return CACHE_TTL_OPEN if _is_market_open() else CACHE_TTL_CLOSED
+
+
+def _is_rate_limited() -> bool:
+    with _rate_limit_lock:
+        return time.time() < _rate_limit_cooldown_until
+
+
+def _set_rate_limit_cooldown(seconds: float = 60.0) -> None:
+    with _rate_limit_lock:
+        global _rate_limit_cooldown_until
+        _rate_limit_cooldown_until = time.time() + seconds
+
+
+def _get_refresh_lock(key: str) -> threading.Lock:
+    with _rate_limit_lock:
+        if key not in _refresh_locks:
+            _refresh_locks[key] = threading.Lock()
+        return _refresh_locks[key]
+
+
+def _refresh_quote_background(symbol: str, exchange: str, ticker_sym: str) -> None:
+    lock = _get_refresh_lock(f"quote:{symbol}")
+    if not lock.acquire(blocking=False):
+        return
+    try:
+        if f"quote:{symbol}" in _refresh_in_progress:
+            return
+        _refresh_in_progress.add(f"quote:{symbol}")
+
+        if _is_rate_limited():
+            return
+
+        try:
+            price, prev, open_, high, low, vol = _fetch_ticker_price(ticker_sym)
+
+            if price < 0.5 or price > 1_000_000:
+                raise ValueError(f"Suspicious price {price}")
+
+            chg     = round(price - prev, 2)
+            chg_pct = round((chg / prev) * 100, 2) if prev else 0
+
+            result = {
+                "symbol": symbol, "exchange": exchange,
+                "price":  price,  "open":  open_,
+                "high":   high,   "low":   low,
+                "volume": vol,    "change": chg,
+                "changePct": chg_pct,
+                "timestamp": datetime.now().isoformat(),
+                "source": "live",
+            }
+            _cache[symbol] = {**result, "_ts": time.time()}
+        except Exception as e:
+            err_str = str(e).lower()
+            if "rate limit" in err_str or "429" in err_str or "too many requests" in err_str:
+                _set_rate_limit_cooldown(60.0)
+            print(f"[price bg] {ticker_sym}: {e}")
+    finally:
+        _refresh_in_progress.discard(f"quote:{symbol}")
+        lock.release()
+
+
+def _refresh_index_background(symbol: str) -> None:
+    lock = _get_refresh_lock(f"index:{symbol}")
+    if not lock.acquire(blocking=False):
+        return
+    try:
+        if f"index:{symbol}" in _refresh_in_progress:
+            return
+        _refresh_in_progress.add(f"index:{symbol}")
+
+        if _is_rate_limited():
+            return
+
+        try:
+            price, prev = _fetch_index_price(symbol)
+            chg = round(price - prev, 2)
+            result = {
+                "symbol":    symbol,
+                "price":     price,
+                "change":    chg,
+                "changePct": round((chg / prev) * 100, 2) if prev else 0,
+                "timestamp": datetime.now().isoformat(),
+                "source": "live",
+            }
+            _cache[f"_idx_{symbol}"] = {**result, "_ts": time.time()}
+        except Exception as e:
+            err_str = str(e).lower()
+            if "rate limit" in err_str or "429" in err_str or "too many requests" in err_str:
+                _set_rate_limit_cooldown(60.0)
+            print(f"[index bg] {symbol}: {e}")
+    finally:
+        _refresh_in_progress.discard(f"index:{symbol}")
+        lock.release()
+
+
 def get_live_price(symbol: str, exchange: str = "NSE") -> dict:
-    ttl    = CACHE_TTL_OPEN if _is_market_open() else CACHE_TTL_CLOSED
+    ttl    = _get_ttl()
     cached = _cache.get(symbol)
-    if cached and (time.time() - cached["_ts"]) < ttl:
-        return {k: v for k, v in cached.items() if k != "_ts"}
+    now    = time.time()
+
+    if cached and (now - cached["_ts"]) < ttl:
+        result = {k: v for k, v in cached.items() if k != "_ts"}
+        result["source"] = result.get("source", "live")
+        return result
 
     ticker_sym = _resolve_ticker(symbol, exchange)
+
+    if cached and (now - cached["_ts"]) >= ttl:
+        stale_result = {k: v for k, v in cached.items() if k != "_ts"}
+        stale_result["source"] = "stale"
+        threading.Thread(
+            target=_refresh_quote_background,
+            args=(symbol, exchange, ticker_sym),
+            daemon=True
+        ).start()
+        return stale_result
+
+    if _is_rate_limited():
+        if cached:
+            stale_result = {k: v for k, v in cached.items() if k != "_ts"}
+            stale_result["source"] = "stale"
+            return stale_result
+        return _gbm(symbol, exchange)
 
     try:
         price, prev, open_, high, low, vol = _fetch_ticker_price(ticker_sym)
@@ -215,22 +340,51 @@ def get_live_price(symbol: str, exchange: str = "NSE") -> dict:
             "volume": vol,    "change": chg,
             "changePct": chg_pct,
             "timestamp": datetime.now().isoformat(),
+            "source": "live",
         }
         _cache[symbol] = {**result, "_ts": time.time()}
         return result
 
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate limit" in err_str or "429" in err_str or "too many requests" in err_str:
+            _set_rate_limit_cooldown(60.0)
         print(f"[price] {ticker_sym}: {e} — GBM fallback")
         if symbol in _cache:
-            return {k: v for k, v in _cache[symbol].items() if k != "_ts"}
+            stale_result = {k: v for k, v in _cache[symbol].items() if k != "_ts"}
+            stale_result["source"] = "stale"
+            return stale_result
         return _gbm(symbol, exchange)
 
 
 def get_index(symbol: str) -> dict:
-    ttl    = CACHE_TTL_OPEN if _is_market_open() else CACHE_TTL_CLOSED
-    cached = _cache.get(f"_idx_{symbol}")
-    if cached and (time.time() - cached["_ts"]) < ttl:
-        return {k: v for k, v in _cache[f"_idx_{symbol}"].items() if k != "_ts"}
+    ttl    = _get_ttl()
+    cache_key = f"_idx_{symbol}"
+    cached = _cache.get(cache_key)
+    now    = time.time()
+
+    if cached and (now - cached["_ts"]) < ttl:
+        result = {k: v for k, v in cached.items() if k != "_ts"}
+        result["source"] = result.get("source", "live")
+        return result
+
+    if cached and (now - cached["_ts"]) >= ttl:
+        stale_result = {k: v for k, v in cached.items() if k != "_ts"}
+        stale_result["source"] = "stale"
+        threading.Thread(
+            target=_refresh_index_background,
+            args=(symbol,),
+            daemon=True
+        ).start()
+        return stale_result
+
+    if _is_rate_limited():
+        if cached:
+            stale_result = {k: v for k, v in cached.items() if k != "_ts"}
+            stale_result["source"] = "stale"
+            return stale_result
+        return {"symbol": symbol, "price": 0, "change": 0, "changePct": 0,
+                "timestamp": datetime.now().isoformat(), "source": "simulated"}
 
     try:
         price, prev = _fetch_index_price(symbol)
@@ -241,13 +395,56 @@ def get_index(symbol: str) -> dict:
             "change":    chg,
             "changePct": round((chg / prev) * 100, 2) if prev else 0,
             "timestamp": datetime.now().isoformat(),
+            "source": "live",
         }
-        _cache[f"_idx_{symbol}"] = {**result, "_ts": time.time()}
+        _cache[cache_key] = {**result, "_ts": time.time()}
         return result
 
     except Exception as e:
+        err_str = str(e).lower()
+        if "rate limit" in err_str or "429" in err_str or "too many requests" in err_str:
+            _set_rate_limit_cooldown(60.0)
         print(f"[index] {symbol}: {e}")
-        if f"_idx_{symbol}" in _cache:
-            return {k: v for k, v in _cache[f"_idx_{symbol}"].items() if k != "_ts"}
+        if cache_key in _cache:
+            stale_result = {k: v for k, v in _cache[cache_key].items() if k != "_ts"}
+            stale_result["source"] = "stale"
+            return stale_result
         return {"symbol": symbol, "price": 0, "change": 0, "changePct": 0,
-                "timestamp": datetime.now().isoformat()}
+                "timestamp": datetime.now().isoformat(), "source": "simulated"}
+
+
+def fetch_indices_parallel(index_map: Dict[str, str]) -> List[dict]:
+    results: Dict[str, dict] = {}
+
+    def fetch_one(name: str, ticker: str) -> tuple[str, dict]:
+        try:
+            data = get_index(ticker)
+            data["name"] = name
+            return name, data
+        except Exception as e:
+            print(f"[index parallel] {name} ({ticker}): {e}")
+            return name, {"name": name, "symbol": ticker, "price": 0, "change": 0,
+                          "changePct": 0, "timestamp": datetime.now().isoformat(), "source": "simulated"}
+
+    with ThreadPoolExecutor(max_workers=min(len(index_map), 5)) as executor:
+        futures = {executor.submit(fetch_one, name, ticker): name for name, ticker in index_map.items()}
+        for future in as_completed(futures):
+            name, data = future.result()
+            results[name] = data
+
+    return [results[name] for name in index_map.keys()]
+
+
+def warm_cache(symbols: List[str], indices: Dict[str, str]) -> None:
+    def _warm():
+        for sym in symbols:
+            try:
+                get_live_price(sym)
+            except Exception:
+                pass
+        try:
+            fetch_indices_parallel(indices)
+        except Exception:
+            pass
+
+    threading.Thread(target=_warm, daemon=True).start()
