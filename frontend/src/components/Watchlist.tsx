@@ -1,12 +1,17 @@
 "use client";
 import { memo, useRef, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { usePriceStore, StockPrice } from "@/stores/priceStore";
 import { useShallow } from "zustand/react/shallow";
 import { formatINR, formatChange, formatVolume } from "@/lib/formatters";
-import StockChartModal from "@/components/StockChartModal";
 import { usePriceStream, fetchPrices, fetchDefaultPrices } from "@/hooks/usePriceStream";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+const StockChartModal = dynamic(() => import("@/components/StockChartModal").then(m => m.default), {
+  loading: () => <div style={{ height: 520, background: "var(--color-surface-card)", border: "1px solid var(--color-surface-border)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" }}>Loading…</div>,
+  ssr: false,
+});
 
 // ── Market hours check (IST, Mon–Fri 09:15–15:30) ────────────────────────────
 function isMarketOpen(): boolean {

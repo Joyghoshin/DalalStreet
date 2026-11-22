@@ -1,14 +1,9 @@
 "use client";
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { usePriceStream } from "@/hooks/usePriceStream";
 import Watchlist    from "@/components/Watchlist";
 import IndexBar     from "@/components/IndexBar";
-import TradePanel   from "@/components/TradePanel";
-import Portfolio    from "@/components/Portfolio";
-import AIChat       from "@/components/AIChat";
-import AlgoTrading  from "@/components/AlgoTrading";
-import Backtest     from "@/components/Backtest";
-import Learn        from "@/components/Learn";
 import LogoutButton from "@/components/LogoutButton";
 
 const DEFAULT_SYMBOLS = [
@@ -17,6 +12,25 @@ const DEFAULT_SYMBOLS = [
 ];
 
 type Tab = "chat" | "trade" | "algo" | "backtest" | "learn" | "portfolio";
+
+const TradePanel = dynamic(() => import("@/components/TradePanel").then(m => m.default), {
+  loading: () => <div style={{ height: 520, background: "var(--color-surface-card)", border: "1px solid var(--color-surface-border)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" }}>Loading…</div>,
+});
+const AIChat = dynamic(() => import("@/components/AIChat").then(m => m.default), {
+  loading: () => <div style={{ height: 520, background: "var(--color-surface-card)", border: "1px solid var(--color-surface-border)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" }}>Loading…</div>,
+});
+const AlgoTrading = dynamic(() => import("@/components/AlgoTrading").then(m => m.default), {
+  loading: () => <div style={{ height: 520, background: "var(--color-surface-card)", border: "1px solid var(--color-surface-border)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" }}>Loading…</div>,
+});
+const Backtest = dynamic(() => import("@/components/Backtest").then(m => m.default), {
+  loading: () => <div style={{ height: 520, background: "var(--color-surface-card)", border: "1px solid var(--color-surface-border)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" }}>Loading…</div>,
+});
+const Learn = dynamic(() => import("@/components/Learn").then(m => m.default), {
+  loading: () => <div style={{ height: 520, background: "var(--color-surface-card)", border: "1px solid var(--color-surface-border)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" }}>Loading…</div>,
+});
+const Portfolio = dynamic(() => import("@/components/Portfolio").then(m => m.default), {
+  loading: () => <div style={{ height: 520, background: "var(--color-surface-card)", border: "1px solid var(--color-surface-border)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" }}>Loading…</div>,
+});
 
 export default function Dashboard() {
   usePriceStream(DEFAULT_SYMBOLS);
