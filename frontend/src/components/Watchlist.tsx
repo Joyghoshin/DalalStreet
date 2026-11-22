@@ -4,7 +4,7 @@ import { usePriceStore, StockPrice } from "@/stores/priceStore";
 import { useShallow } from "zustand/react/shallow";
 import { formatINR, formatChange, formatVolume } from "@/lib/formatters";
 import StockChartModal from "@/components/StockChartModal";
-import { usePriceStream, timedFetch } from "@/hooks/usePriceStream";
+import { usePriceStream, fetchPrices, fetchDefaultPrices } from "@/hooks/usePriceStream";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -128,31 +128,42 @@ function StoreRow({ symbol, onChart }: { symbol: string; onChart?: (s: string) =
   return <PriceRow stock={stock} onChart={onChart} />;
 }
 
-// ── Row for user watchlist — polls REST independently ────────────────────────
+// ── Row for user watchlist — uses shared fetchPrices hook ────────────────────
 function UserRow({ symbol, onRemove, onChart }: {
   symbol: string; onRemove: (s: string) => void; onChart?: (s: string) => void;
 }) {
   const [stock, setStock] = useState<StockPrice | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    async function fetch_() {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    async function fetchOne() {
       try {
-        const d = await timedFetch(`${API}/api/market/price/${symbol}`).then(r => r.json());
-        if (alive && d?.price) setStock(d as StockPrice);
-      } catch {}
+        const data = await fetchPrices([symbol]);
+        if (alive && data.length > 0) {
+          setStock(data[0]);
+          setError(null);
+        } else if (alive && data.length === 0) {
+          setError("No data");
+        }
+      } catch (e) {
+        if (alive) setError("Fetch failed");
+      }
     }
-    fetch_();
-    const id = setInterval(fetch_, 5000);
-    return () => { alive = false; clearInterval(id); };
+
+    fetchOne();
+    intervalId = setInterval(fetchOne, 15000);
+    return () => { alive = false; if (intervalId) clearInterval(intervalId); };
   }, [symbol]);
 
   if (!stock) return (
     <tr style={{ borderBottom: "1px solid var(--color-surface-border)" }}>
       <td colSpan={6} style={{ padding: "10px 16px", fontSize: 11,
-        color: "#4b5563", fontFamily: "monospace" }}>
+        color: error ? "#f87171" : "#4b5563", fontFamily: "monospace" }}>
         <span style={{ color: "var(--color-accent)", fontWeight: 700 }}>{symbol}</span>
-        {" — fetching…"}
+        {error ? ` — ${error}` : " — fetching…"}
       </td>
     </tr>
   );
@@ -233,12 +244,8 @@ export default function Watchlist() {
     async function fetchAll() {
       try {
         setLoadingDefaults(true);
-        const promises = defSymbols.map(s =>
-          fetch(`${API}/api/market/price/${s}`).then(r => r.ok ? r.json() : null).catch(() => null)
-        );
-        const results = await Promise.all(promises);
-        const valid = results.filter(Boolean);
-        if (alive && valid.length) updatePrices(valid as any);
+        const results = await fetchDefaultPrices(defSymbols);
+        if (alive && results.length) updatePrices(results as any);
       } catch {} finally { if (alive) setLoadingDefaults(false); }
     }
     fetchAll();
