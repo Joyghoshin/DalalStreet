@@ -38,7 +38,7 @@ export default function Dashboard() {
   const [activeTab,  setActiveTab]  = useState<Tab>("chat");
 
   const tabStyle = (t: Tab) => ({
-    padding: "5px 10px", borderRadius: 8, fontSize: 11,
+    borderRadius: 8, fontSize: 11,
     fontWeight: 600, cursor: "pointer", border: "none",
     fontFamily: "monospace",
     background: activeTab === t
@@ -52,10 +52,8 @@ export default function Dashboard() {
     <div style={{ minHeight: "100vh", backgroundColor: "var(--color-surface)" }}>
 
       {/* Header */}
-      <header style={{
+      <header className="flex flex-wrap items-center justify-between gap-4 px-3 md:px-6 py-3 md:py-2" style={{
         borderBottom: "1px solid var(--color-surface-border)",
-        padding: "10px 24px",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <h1 style={{ fontSize: 17, fontWeight: 700, color: "#fff", margin: 0 }}>
@@ -69,7 +67,7 @@ export default function Dashboard() {
           }}>DEMO · Virtual Trading</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace" }}>
+          <div className="hidden md:block" style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace" }}>
             Powered by Groq · yfinance · NSE/BSE
           </div>
           <LogoutButton />
@@ -77,37 +75,34 @@ export default function Dashboard() {
       </header>
 
       {/* Index bar */}
-      <div style={{
+      <div className="px-3 md:px-6 py-1.5 overflow-x-auto" style={{
         borderBottom: "1px solid var(--color-surface-border)",
-        padding: "6px 24px",
         backgroundColor: "var(--color-surface-card)",
       }}>
         <IndexBar />
       </div>
 
       {/* Main layout */}
-      <main style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 340px",
-        gap: 16, padding: 16,
-        alignItems: "start",
-        minHeight: "calc(100vh - 100px)",
+      <main className="grid gap-4 md:gap-4 p-2 md:p-4 min-h-[calc(100vh-100px)] min-w-0" style={{
+        gridTemplateColumns: "1fr",
       }}>
-        <Watchlist />
+        <div className="min-w-0" style={{ display: "contents" }}>
+          <Watchlist />
+        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="min-w-0" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{
             display: "flex", gap: 4, flexWrap: "wrap",
             background: "var(--color-surface-card)",
             border: "1px solid var(--color-surface-border)",
             borderRadius: 10, padding: 6,
           }}>
-            <button style={tabStyle("chat")}      onClick={() => setActiveTab("chat")}>🤖 AI</button>
-            <button style={tabStyle("trade")}     onClick={() => setActiveTab("trade")}>📈 Trade</button>
-            <button style={tabStyle("algo")}      onClick={() => setActiveTab("algo")}>⚡ Algo</button>
-            <button style={tabStyle("backtest")}  onClick={() => setActiveTab("backtest")}>🔬 Backtest</button>
-            <button style={tabStyle("learn")}     onClick={() => setActiveTab("learn")}>🎓 Learn</button>
-            <button style={tabStyle("portfolio")} onClick={() => setActiveTab("portfolio")}>💼 Portfolio</button>
+            <button className="h-10 md:h-auto px-2 md:px-2.5" style={tabStyle("chat")}      onClick={() => setActiveTab("chat")}>🤖 AI</button>
+            <button className="h-10 md:h-auto px-2 md:px-2.5" style={tabStyle("trade")}     onClick={() => setActiveTab("trade")}>📈 Trade</button>
+            <button className="h-10 md:h-auto px-2 md:px-2.5" style={tabStyle("algo")}      onClick={() => setActiveTab("algo")}>⚡ Algo</button>
+            <button className="h-10 md:h-auto px-2 md:px-2.5" style={tabStyle("backtest")}  onClick={() => setActiveTab("backtest")}>🔬 Backtest</button>
+            <button className="h-10 md:h-auto px-2 md:px-2.5" style={tabStyle("learn")}     onClick={() => setActiveTab("learn")}>🎓 Learn</button>
+            <button className="h-10 md:h-auto px-2 md:px-2.5" style={tabStyle("portfolio")} onClick={() => setActiveTab("portfolio")}>💼 Portfolio</button>
           </div>
 
           {activeTab === "chat"      && <AIChat />}
