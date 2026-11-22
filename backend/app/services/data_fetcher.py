@@ -153,7 +153,9 @@ def _gbm(symbol: str, exchange: str) -> dict:
 
 
 NSE_OVERRIDES = {
-    "TATAMOTORS": "TATAMOTORS.NS",
+    "TATAMOTORS": "TMPV.NS",
+    "TMPV": "TMPV.NS",
+    "TMCV": "TMCV.NS",
     "BHARTIARTL": "BHARTIARTL.NS",
     "KOTAKBANK":  "KOTAKBANK.NS",
     "HDFCBANK":   "HDFCBANK.NS",
@@ -185,7 +187,6 @@ NSE_OVERRIDES = {
 }
 
 BSE_FALLBACKS = {
-    "TATAMOTORS": "500570.BO",
     "LTIM":       "540005.BO",
     "ADANIENT":   "512599.BO",
     "BAJAJHFL":   "508246.BO",
